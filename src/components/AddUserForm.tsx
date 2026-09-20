@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
+import { FormEvent, useRef, useState } from 'react'
 import { api, ApiRequestError } from '@/lib/api-client'
 import { ORG_ROLES, PUBLISHER_PERMISSIONS, SYSTEM_ROLES } from '@/lib/constants'
 import type { OrgRole, PublisherPermission, SystemRole } from '@/lib/constants'
@@ -28,8 +28,10 @@ export function AddUserForm({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fields, setFields] = useState<Record<string, string>>({})
+  const accessRef = useRef<HTMLFieldSetElement>(null)
 
   function toggleAccess(id: string, on: boolean) {
+    if (on) setFields((f) => ({ ...f, publisherAccess: '' }))
     setGrants((g) => {
       const next = { ...g }
       if (on) next[id] = ['VIEW']
@@ -39,13 +41,24 @@ export function AddUserForm({
   }
 
   function togglePermission(id: string, p: PublisherPermission, on: boolean) {
+    if (p === 'VIEW') return // VIEW is implied by any access and cannot be removed
     setGrants((g) => ({ ...g, [id]: on ? [...(g[id] ?? []), p] : (g[id] ?? []).filter((x) => x !== p) }))
   }
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    setSubmitting(true)
     setError(null)
+    if (Object.keys(grants).length === 0) {
+      setFields({
+        publisherAccess:
+          publishers.length === 0
+            ? 'Create a publisher first, then add users to it'
+            : 'Select at least one publisher',
+      })
+      accessRef.current?.focus()
+      return
+    }
+    setSubmitting(true)
     setFields({})
     try {
       const res = await api<{ name: string; attachedExisting: boolean }>(`/api/organizations/${orgId}/users`, {
@@ -106,8 +119,15 @@ export function AddUserForm({
         </div>
       </div>
 
-      <fieldset>
-        <legend className="text-sm font-medium">Publisher access</legend>
+      <fieldset
+        ref={accessRef}
+        tabIndex={-1}
+        aria-describedby={fields.publisherAccess ? 'publisherAccess-error' : undefined}
+        className="focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+      >
+        <legend className="text-sm font-medium">
+          Publisher access <span className="font-normal text-slate-600">(select at least one)</span>
+        </legend>
         {publishers.length === 0 ? (
           <p className="mt-1 text-sm text-slate-600">Create a publisher first to grant access.</p>
         ) : (
@@ -128,9 +148,11 @@ export function AddUserForm({
                           <input
                             type="checkbox"
                             checked={grants[p.id].includes(perm)}
+                            disabled={perm === 'VIEW'}
                             onChange={(e) => togglePermission(p.id, perm, e.target.checked)}
                           />
                           {label(perm)}
+                          {perm === 'VIEW' && <span className="sr-only"> (always included)</span>}
                         </label>
                       ))}
                     </fieldset>
