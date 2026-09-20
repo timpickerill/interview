@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Enum-like columns are stored as strings (Prisma 5.14 has no SQLite enums).
+// Allowed values live in src/lib/constants.ts and are validated at the API boundary.
+//   User.systemRole:            USER | SYSTEM_ADMIN
+//   Membership.role:            OWNER | ADMIN | MEMBER
+//   PublisherPermission.permission: VIEW | EDIT | PUBLISH | MANAGE_USERS
+
+model User {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  name       String
+  systemRole String   @default("USER")
+  createdAt  DateTime @default(now())
+
+  memberships Membership[]
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  memberships Membership[]
+  publishers  Publisher[]
+}
+
+// User <-> Organization, with an org-level role.
+model Membership {
+  orgId     String
+  userId    String
+  role      String   @default("MEMBER")
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  publisherAccess PublisherAccess[]
+
+  @@id([orgId, userId])
+  @@index([userId])
+}
+
+model Publisher {
+  id        String   @id @default(cuid())
+  orgId     String
+  name      String
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  access PublisherAccess[]
+
+  @@unique([orgId, name])
+  // Target for the composite FK from PublisherAccess.
+  @@unique([orgId, id])
+}
+
+// A user's access to a publisher. orgId is denormalized on purpose: both composite
+// FKs share it, so the DB guarantees the user is a member of the SAME org that
+// owns the publisher. A cross-org grant cannot be inserted.
+model PublisherAccess {
+  publisherId String
+  userId      String
+  orgId       String
+  createdAt   DateTime @default(now())
+
+  membership Membership @relation(fields: [orgId, userId], references: [orgId, userId], onDelete: Cascade)
+  publisher  Publisher  @relation(fields: [orgId, publisherId], references: [orgId, id], onDelete: Cascade)
+
+  permissions PublisherPermission[]
+
+  @@id([publisherId, userId])
+  @@index([orgId, userId])
+}
+
+// One row per permission held on a publisher.
+model PublisherPermission {
+  publisherId String
+  userId      String
+  permission  String
+
+  access PublisherAccess @relation(fields: [publisherId, userId], references: [publisherId, userId], onDelete: Cascade)
+
+  @@id([publisherId, userId, permission])
+}
