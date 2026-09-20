@@ -96,6 +96,7 @@ All routes live under `src/app/api/organizations`. Errors are JSON: `{ "error": 
 
 `POST .../users` body: `{ name, email, systemRole?, role?, publisherAccess?: [{ publisherId, permissions[] }] }`.
 - New email: creates the user. Existing email: attaches that user and leaves their name and system role unchanged (200 instead of 201). Already a member: 409.
+- Any publisher access implies `VIEW`: it is added automatically if omitted.
 - Membership and publisher grants are written in one transaction. Publisher IDs must belong to this org, otherwise 400 and nothing is written.
 
 **Tenant scoping:** every query starts from the `orgId` in the URL, and grants are checked against that org's publishers. The composite foreign keys are a second, database-level guard.

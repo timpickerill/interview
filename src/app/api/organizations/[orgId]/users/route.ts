@@ -50,7 +50,8 @@ function parse(body: Record<string, unknown>) {
         break
       }
       seen.add(publisherId)
-      grants.push({ publisherId, permissions: Array.from(new Set(perms as PublisherPermission[])) })
+      // Any access implies VIEW, so it is always included.
+      grants.push({ publisherId, permissions: Array.from(new Set<PublisherPermission>(['VIEW', ...(perms as PublisherPermission[])])) })
     }
   }
 
